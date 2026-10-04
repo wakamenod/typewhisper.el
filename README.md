@@ -1,14 +1,16 @@
 # typewhisper.el
 
+[日本語](README.ja.md)
+
 Dictate into Emacs with [TypeWhisper](https://github.com/TypeWhisper/typewhisper-mac), fix misrecognized words with Claude, and teach TypeWhisper those fixes so they don't happen again.
 
-It is built for Japanese dictation mixed with English technical terms. For example, it turns `リアクトのユーズエフェクト` into `ReactのuseEffect`, but it should work for other languages too.
+It's built for Japanese dictation mixed with English technical terms. For example, it turns `リアクトのユーズエフェクト` into `ReactのuseEffect`. It should work for other languages too.
 
 ## Features
 
-- **Dictation**: start and stop TypeWhisper dictation from Emacs. The text TypeWhisper pastes is remembered as "the last dictation".
-- **Fixing**: send the last dictation (or the region) to Claude through the Claude Code CLI. Only speech recognition errors are fixed, and only inside the target text. The surrounding lines go along as context but are never changed. All fixes form one undo step.
-- **Learning**: after fixing, choose which fixes to register as TypeWhisper corrections or terms. Risky entries, such as very short hiragana words, are not selected by default.
+- **Dictation**: start and stop TypeWhisper dictation from Emacs. Emacs remembers the text TypeWhisper pastes, so you can fix it later.
+- **Fixing**: send the last dictation, or the region, to Claude through the Claude Code CLI. Claude fixes only speech recognition errors, and only inside the target text. The surrounding lines go along as context, but nothing changes there. One undo reverts all fixes.
+- **Learning**: after fixing, choose which fixes to register as TypeWhisper corrections or terms. Risky entries, such as very short hiragana words, start unselected.
 - **Dictionary editing**: list, add, edit, and delete corrections and terms.
 
 ## Requirements
@@ -16,7 +18,7 @@ It is built for Japanese dictation mixed with English technical terms. For examp
 - macOS with TypeWhisper, with the API server turned on in **Settings > Advanced**
 - Emacs 29.1 or later
 - `curl`
-- [Claude Code](https://claude.com/claude-code) (`claude`), signed in. No API key is needed.
+- [Claude Code](https://claude.com/claude-code) (`claude`), signed in. You don't need an API key.
 
 ## Installation
 
@@ -37,7 +39,7 @@ Or clone the repository and add it to your `load-path`:
 (typewhisper-mode 1)
 ```
 
-The package does not bind any keys. For example:
+The package doesn't bind any keys. For example:
 
 ```elisp
 (keymap-global-set "C-c d d" #'typewhisper-dictate)
@@ -51,28 +53,28 @@ The package does not bind any keys. For example:
 
 ### Dictation
 
-`M-x typewhisper-dictate` starts dictation at point. Run it again to stop. TypeWhisper transcribes the audio and pastes the text into the frontmost app, so keep Emacs in front.
+`M-x typewhisper-dictate` starts dictation at point. Run it again to stop. TypeWhisper transcribes the audio and pastes the text into the active app, so keep Emacs in front.
 
-`M-x typewhisper-dictate-and-fix` works the same way, and then runs `typewhisper-fix` on the result.
+`M-x typewhisper-dictate-and-fix` works the same way, then runs `typewhisper-fix` on the result.
 
-With `typewhisper-mode`, the mode line shows `TW[REC]` while recording, `TW[…]` while starting or transcribing, and `[fix]` while Claude is working.
+With `typewhisper-mode` on, the mode line shows `TW[REC]` while recording and `TW[…]` while starting or transcribing. It adds `[fix]` while Claude is working.
 
 If Emacs and TypeWhisper get out of sync, run `M-x typewhisper-cancel`.
 
 ### Fixing
 
-`M-x typewhisper-fix` fixes the active region, or the last dictation if there is no region. Claude receives:
+`M-x typewhisper-fix` fixes the active region. Without a region, it fixes the last dictation. Claude receives:
 
 - the target text
 - `typewhisper-fix-context-lines` lines before and after it, as context only
 - your TypeWhisper terms and corrections, as spelling hints
 - the major mode of the buffer
 
-Fixed text is highlighted for a moment. Fixes that Claude is unsure about (below `typewhisper-fix-min-confidence`) are not applied. They are shown in the echo area as suggestions.
+Emacs highlights the fixed text for a moment. When Claude is unsure about a fix (below `typewhisper-fix-min-confidence`), Emacs doesn't apply it and shows it in the echo area as a suggestion.
 
 ### Registering fixes
 
-After fixes are applied, the `*TypeWhisper Register*` buffer opens:
+After applying fixes, Emacs opens the `*TypeWhisper Register*` buffer:
 
 | Key       | Action                                                    |
 |-----------|-----------------------------------------------------------|
@@ -82,20 +84,20 @@ After fixes are applied, the `*TypeWhisper Register*` buffer opens:
 | `C-c C-c` | Register the marked rows                                  |
 | `C-c C-k` | Discard                                                   |
 
-A **correction** replaces `wrong` with `right` after transcription. A **term** adds `right` to the vocabulary hints for the speech engine. Terms usually suit English technical terms better.
+A correction replaces `wrong` with `right` after transcription. A term adds `right` to the vocabulary hints for the speech engine. Terms usually suit English technical terms better.
 
-The Notes column shows warnings. Rows with these problems are not marked by default:
+The Notes column shows warnings. Rows with these problems start unmarked:
 
 - The original text is too short (`typewhisper-register-min-length`). For hiragana-only text, the limit is `typewhisper-register-min-hiragana-length`.
-- The same correction is already registered.
-- The wrong text is not in TypeWhisper's raw transcription. An existing correction probably produced it, so review that correction instead.
+- The same correction already exists.
+- TypeWhisper's raw transcription doesn't contain the wrong text. An existing correction probably produced it, so review that correction instead.
 
-These rows are marked, but come with a warning:
+These rows start marked, with a warning:
 
 - The fix changes only letter case.
 - The fix would overwrite an existing correction that has a different replacement.
 
-Set `typewhisper-fix-confirm-registration` to nil to skip this step.
+To skip this step, set `typewhisper-fix-confirm-registration` to nil.
 
 ### Dictionary
 
@@ -117,7 +119,7 @@ Set `typewhisper-fix-confirm-registration` to nil to skip this step.
 | `typewhisper-claude-model`            | `"sonnet"` | Model for fixing                                   |
 | `typewhisper-claude-effort`           | `"low"`    | Effort level, or nil                               |
 | `typewhisper-fix-context-lines`       | `3`        | Context lines on each side                         |
-| `typewhisper-fix-min-confidence`      | `medium`   | Lowest confidence that is applied                  |
+| `typewhisper-fix-min-confidence`      | `medium`   | Lowest confidence to apply                         |
 | `typewhisper-fix-include-dictionary`  | `t`        | Send terms and corrections to Claude               |
 | `typewhisper-fix-highlight-duration`  | `3`        | Seconds to highlight fixes                         |
 | `typewhisper-api-port`                | `nil`      | API port; nil reads TypeWhisper's discovery file   |
@@ -126,15 +128,15 @@ Set `typewhisper-fix-confirm-registration` to nil to skip this step.
 
 See `M-x customize-group RET typewhisper` for the rest.
 
-`sonnet` with low effort takes about 3 seconds per fix, and handles English technical terms well. `haiku` was slower and less accurate in testing.
+With `sonnet` and low effort, a fix takes about 3 seconds and gets English technical terms right. In testing, `haiku` was slower and less accurate.
 
-If Emacs cannot find `claude` (common when Emacs is started from the Dock), set `typewhisper-claude-program` to its full path, such as `~/.local/bin/claude`.
+Emacs started from the Dock often can't find `claude`. In that case, set `typewhisper-claude-program` to its full path, such as `~/.local/bin/claude`.
 
 ## How it works
 
-- The API port and token are read from `~/Library/Application Support/TypeWhisper/api-discovery.json`, which TypeWhisper writes while the API server runs. Requests go through `curl`, and the token is passed on stdin so it does not show up in the process list.
+- While the API server runs, TypeWhisper writes its port and token to `~/Library/Application Support/TypeWhisper/api-discovery.json`, and the package reads them from there. Requests go through `curl`. The package passes the token on standard input, so it never appears in the process list.
 - `POST /v1/dictation/start` replies only once the microphone is ready, so every dictation request is asynchronous.
-- After dictation stops, the package polls `GET /v1/dictation/transcription` until it is done. It then looks for the pasted text at the place where dictation started.
+- After dictation stops, the package polls `GET /v1/dictation/transcription` until the transcription finishes. It then looks for the pasted text where dictation started.
 - Fixing runs `claude -p` with no tools, no MCP servers, and no settings, and asks for structured JSON output.
 
 ## Development
