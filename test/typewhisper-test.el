@@ -219,6 +219,43 @@
                    '((warn . "overwrites リアクト → react"))))
     (should (assq 'block (typewhisper-dictionary-check "ビュー" "Vue" corrections)))))
 
+(ert-deftest typewhisper-test-guard-existing-ignores-case ()
+  (let ((corrections '(((original . "React") (replacement . "React.js")))))
+    (should (equal (typewhisper-dictionary-check "react" "React" corrections)
+                   '((warn . "differs only in case; check case sensitivity")
+                     (warn . "overwrites React → React.js")))))
+  (let ((corrections '(((original . "Vue") (replacement . "Vue.js")))))
+    (should (equal (typewhisper-dictionary-check "vue" "Vue.js" corrections)
+                   '((warn . "overwrites Vue → Vue.js"))))))
+
+(defun typewhisper-test--edit (old new)
+  "Edit correction OLD to have original NEW.  Return the API calls made."
+  (let (calls)
+    (cl-letf (((symbol-function 'typewhisper-api-corrections)
+               (lambda () '(((original . "React") (replacement . "React.js"))
+                            ((original . "Vue") (replacement . "Vue.js")))))
+              ((symbol-function 'typewhisper-corrections--read)
+               (lambda (&rest _) (list new "React.js" nil)))
+              ((symbol-function 'typewhisper-api-put-correction)
+               (lambda (o &rest _) (push (list 'put o) calls)))
+              ((symbol-function 'typewhisper-api-delete-correction)
+               (lambda (o) (push (list 'delete o) calls)))
+              ((symbol-function 'yes-or-no-p) #'always))
+      (typewhisper-corrections)
+      (with-current-buffer "*TypeWhisper Corrections*"
+        (goto-char (point-min))
+        (search-forward old)
+        (typewhisper-corrections-edit)))
+    (nreverse calls)))
+
+(ert-deftest typewhisper-test-edit-case-only-does-not-delete ()
+  (should (equal (typewhisper-test--edit "React" "react")
+                 '((put "react")))))
+
+(ert-deftest typewhisper-test-edit-rename-deletes-old ()
+  (should (equal (typewhisper-test--edit "React" "Reakt")
+                 '((put "Reakt") (delete "React")))))
+
 (ert-deftest typewhisper-test-guard-raw-text ()
   (let ((corrections '(((original . "りあくと") (replacement . "リアクト")))))
     (should-not (typewhisper-dictionary-check "リアクト" "React" corrections "リアクトで"))

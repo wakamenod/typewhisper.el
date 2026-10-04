@@ -103,10 +103,25 @@ Short hiragana words match too often and are not selected by default."
       (tabulated-list-print))
     (pop-to-buffer buffer)))
 
+(defun typewhisper-dictionary--find-correction (original corrections)
+  "Return the correction in CORRECTIONS whose original is ORIGINAL.
+Case is ignored, as TypeWhisper does when it updates or deletes a
+correction."
+  (cl-find original corrections
+           :key (lambda (c) (alist-get 'original c))
+           :test #'string-equal-ignore-case))
+
 (defun typewhisper-corrections--entry (original)
-  "Return the cached correction for ORIGINAL."
-  (cl-find original typewhisper-corrections--cache
-           :key (lambda (c) (alist-get 'original c)) :test #'equal))
+  "Return the cached correction for ORIGINAL, ignoring case."
+  (typewhisper-dictionary--find-correction original typewhisper-corrections--cache))
+
+(defun typewhisper-corrections--confirm-overwrite (original)
+  "Ask before overwriting the correction that ORIGINAL would replace."
+  (when-let* ((existing (typewhisper-corrections--entry original)))
+    (unless (yes-or-no-p (format "This overwrites %s → %s; continue? "
+                                 (alist-get 'original existing)
+                                 (alist-get 'replacement existing)))
+      (user-error "Cancelled"))))
 
 (defun typewhisper-corrections--read (&optional original replacement case-sensitive)
   "Read a correction, using ORIGINAL, REPLACEMENT and CASE-SENSITIVE as defaults.
@@ -126,9 +141,7 @@ Return (ORIGINAL REPLACEMENT CASE-SENSITIVE)."
   "Add a correction from ORIGINAL to REPLACEMENT.
 CASE-SENSITIVE non-nil makes it case sensitive."
   (interactive (typewhisper-corrections--read))
-  (when (and (typewhisper-corrections--entry original)
-             (not (yes-or-no-p (format "%s is already registered; overwrite? " original))))
-    (user-error "Cancelled"))
+  (typewhisper-corrections--confirm-overwrite original)
   (typewhisper-api-put-correction original replacement case-sensitive)
   (revert-buffer)
   (message "Added %s → %s" original replacement))
@@ -141,13 +154,14 @@ CASE-SENSITIVE non-nil makes it case sensitive."
          (new (typewhisper-corrections--read
                old (alist-get 'replacement entry) (alist-get 'caseSensitive entry))))
     (pcase-let ((`(,original ,replacement ,case-sensitive) new))
-      (when (and (not (equal original old))
-                 (typewhisper-corrections--entry original)
-                 (not (yes-or-no-p (format "%s is already registered; overwrite? " original))))
-        (user-error "Cancelled"))
-      (typewhisper-api-put-correction original replacement case-sensitive)
-      (unless (equal original old)
-        (typewhisper-api-delete-correction old))
+      ;; TypeWhisper matches the original ignoring case, so a change in
+      ;; case only updates this entry.  Deleting OLD would delete it.
+      (let ((renamed (not (string-equal-ignore-case original old))))
+        (when renamed
+          (typewhisper-corrections--confirm-overwrite original))
+        (typewhisper-api-put-correction original replacement case-sensitive)
+        (when renamed
+          (typewhisper-api-delete-correction old)))
       (revert-buffer)
       (message "Saved %s → %s" original replacement))))
 
@@ -249,9 +263,7 @@ transcription before corrections, if known.  Return a list of
 \(LEVEL . MESSAGE) where LEVEL is `block' (not selected by default)
 or `warn'."
   (let ((issues nil)
-        (existing (cl-find wrong corrections
-                           :key (lambda (c) (alist-get 'original c))
-                           :test #'equal)))
+        (existing (typewhisper-dictionary--find-correction wrong corrections)))
     (cond
      ((< (length wrong) typewhisper-register-min-length)
       (push '(block . "too short") issues))
@@ -262,10 +274,11 @@ or `warn'."
                (equal (downcase wrong) (downcase right)))
       (push '(warn . "differs only in case; check case sensitivity") issues))
     (when existing
-      (let ((old (alist-get 'replacement existing)))
-        (push (if (equal old right)
+      (let ((old-original (alist-get 'original existing))
+            (old (alist-get 'replacement existing)))
+        (push (if (and (equal old-original wrong) (equal old right))
                   '(block . "already registered")
-                (cons 'warn (format "overwrites %s → %s" wrong old)))
+                (cons 'warn (format "overwrites %s → %s" old-original old)))
               issues)))
     (when (and raw-text (not (string-search wrong raw-text)))
       (let ((culprits (cl-remove-if-not
